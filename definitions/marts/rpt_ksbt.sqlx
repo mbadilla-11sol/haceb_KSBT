@@ -1,0 +1,83 @@
+config {
+  type: "view",
+  schema: dataform.projectConfig.vars.dataset_procesados,
+  name: "rpt_ksbt",
+  description: "Vista de consumo KSBT (Informe de tarifas de clases de actividad). Una fila por area CO, centro de costo, clase de actividad, ejercicio, periodo y version, con la tarifa plan y la real lado a lado: total, fija y variable en moneda del objeto. Es el entregable del modelo y la que se cuadra contra la transaccion KSBT.",
+  assertions: {
+    uniqueKey: ["client", "controlling_area", "cost_center", "activity_type", "fiscal_year", "period", "version"]
+  },
+  columns: {
+    controlling_area: "Area de controlling (KOKRS)",
+    company_code: "Sociedad del centro de costo (CSKS.BUKRS, via CostCentersMD)",
+    cost_center: "Centro de costo (KOSTL)",
+    cost_center_description: "Texto breve del centro de costo (CSKT.KTEXT)",
+    activity_type: "Clase de actividad (LSTAR)",
+    activity_type_description: "Texto breve de la clase de actividad (CSLT.KTEXT)",
+    fiscal_year: "Ejercicio (GJAHR)",
+    period: "Periodo 1-16 (13-16 especiales)",
+    period_code: "Periodo como lo muestra SAP: 001-016",
+    version: "Version CO (VERSN)",
+    version_description: "Texto de la version (TKT09.TXT)",
+    activity_unit: "Unidad de la actividad (CSSL.LEINH, o CSLA.LEINH si falta)",
+    activity_type_category: "Tipo de clase de actividad (LATYP)",
+    fixed_cost_predistribution_indicator: "CSLA.FIXVO -- indicador de costos fijos predistribuidos de la clase de actividad",
+    object_currency: "Moneda del objeto (moneda del centro de costo)",
+    plan_price_total: "Tarifa plan total (COST.TOG, WRTTP 01), en moneda del objeto y valor real",
+    plan_price_fixed: "Tarifa plan fija (COST.TOF, WRTTP 01)",
+    plan_price_variable: "Tarifa plan variable = total - fija",
+    plan_price_unit: "Unidad de precio de la tarifa plan (COST.TOE)",
+    plan_price_indicator: "Indicador de tarifa de la fila plan (COST.TARKZ)",
+    actual_price_total: "Tarifa real total (COST.TOG, WRTTP 04), en moneda del objeto y valor real",
+    actual_price_fixed: "Tarifa real fija (COST.TOF, WRTTP 04)",
+    actual_price_variable: "Tarifa real variable = total - fija",
+    actual_price_unit: "Unidad de precio de la tarifa real (COST.TOE)",
+    actual_price_indicator: "Indicador de tarifa de la fila real (COST.TARKZ)"
+  }
+}
+
+-- AGREGADO 2026-10-23. Pivotea int_tarifas_ksbt: plan (01) y real (04) pasan
+-- de filas a columnas. El MAX(IF(...)) es seguro porque int_tarifas_ksbt
+-- tiene una assertion de unicidad por tipo de valor: si COST trajera dos
+-- filas para la misma clave (otro LEDNR u otro TARKZ), falla esa assertion
+-- antes de que aca se elija una al azar.
+
+SELECT
+  t.client,
+  t.controlling_area,
+  t.company_code,
+  t.cost_center,
+  t.cost_center_description,
+  t.activity_type,
+  t.activity_type_description,
+  t.fiscal_year,
+  t.period,
+  t.period_code,
+  t.version,
+  v.version_description,
+  t.activity_unit,
+  t.activity_type_category,
+  t.fixed_cost_predistribution_indicator,
+  t.object_currency,
+
+  MAX(IF(t.value_type = '01', t.price_total_object_currency, NULL)) AS plan_price_total,
+  MAX(IF(t.value_type = '01', t.price_fixed_object_currency, NULL)) AS plan_price_fixed,
+  MAX(IF(t.value_type = '01', t.price_variable_object_currency, NULL)) AS plan_price_variable,
+  MAX(IF(t.value_type = '01', t.price_unit_object_currency, NULL)) AS plan_price_unit,
+  MAX(IF(t.value_type = '01', t.price_indicator, NULL)) AS plan_price_indicator,
+
+  MAX(IF(t.value_type = '04', t.price_total_object_currency, NULL)) AS actual_price_total,
+  MAX(IF(t.value_type = '04', t.price_fixed_object_currency, NULL)) AS actual_price_fixed,
+  MAX(IF(t.value_type = '04', t.price_variable_object_currency, NULL)) AS actual_price_variable,
+  MAX(IF(t.value_type = '04', t.price_unit_object_currency, NULL)) AS actual_price_unit,
+  MAX(IF(t.value_type = '04', t.price_indicator, NULL)) AS actual_price_indicator
+FROM ${ref("int_tarifas_ksbt")} AS t
+LEFT JOIN ${ref("stg_versions_ksbt")} AS v
+  ON v.client = t.client
+  AND v.controlling_area = t.controlling_area
+  AND v.version = t.version
+GROUP BY
+  t.client, t.controlling_area, t.company_code, t.cost_center,
+  t.cost_center_description, t.activity_type, t.activity_type_description,
+  t.fiscal_year, t.period, t.period_code, t.version, v.version_description,
+  t.activity_unit, t.activity_type_category,
+  t.fixed_cost_predistribution_indicator, t.object_currency

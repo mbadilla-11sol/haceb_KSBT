@@ -1,0 +1,19 @@
+config {
+  type: "view",
+  schema: dataform.projectConfig.vars.dataset_temp,
+  name: "stg_cslt_ksbt",
+  description: "Staging de CSLT -- texto de clase de actividad, filtrado al idioma de vars.idioma."
+}
+
+-- 5 filas al 2026-10-23, todas con DATBI 9999-12-31. Se conserva la vigencia
+-- igual: si aparecen textos historicos, int_tarifas_ksbt ya la respeta.
+
+SELECT
+  mandt AS client,
+  kokrs AS controlling_area,
+  lstar AS activity_type,
+  datbi AS valid_to,
+  ktext AS activity_type_description,
+  ltext AS activity_type_long_text
+FROM ${ref("cslt")}
+WHERE spras = ${ksbt.sqlString(dataform.projectConfig.vars.idioma)}

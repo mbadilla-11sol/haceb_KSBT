@@ -1,0 +1,20 @@
+config {
+  type: "view",
+  schema: dataform.projectConfig.vars.dataset_temp,
+  name: "cfg_ksbt",
+  description: "Parametros de alcance del modelo KSBT: una fila por mandante, area CO, version y ejercicio en alcance. Se arma desde workflow_settings.yaml (mandante, area_controlling, versiones, ejercicio_desde, ejercicio_hasta); para cambiar el alcance se edita ese archivo, no este.",
+  columns: {
+    client: "Mandante SAP (MANDT)",
+    controlling_area: "Area de controlling (KOKRS)",
+    version: "Version CO (VERSN)",
+    fiscal_year: "Ejercicio (GJAHR), como STRING igual que en la replica"
+  }
+}
+
+SELECT
+  ${ksbt.sqlString(dataform.projectConfig.vars.mandante)} AS client,
+  ${ksbt.sqlString(dataform.projectConfig.vars.area_controlling)} AS controlling_area,
+  version,
+  CAST(fiscal_year AS STRING) AS fiscal_year
+FROM UNNEST(${ksbt.versiones()}) AS version
+CROSS JOIN UNNEST(GENERATE_ARRAY(${ksbt.ejercicioDesde()}, ${ksbt.ejercicioHasta()})) AS fiscal_year

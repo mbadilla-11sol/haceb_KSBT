@@ -1,0 +1,24 @@
+config {
+  type: "view",
+  schema: dataform.projectConfig.vars.dataset_temp,
+  name: "stg_cssl_ksbt",
+  description: "Staging de CSSL -- clase de actividad por centro de costo y ejercicio. Aporta el OBJNR que une con COST, la unidad de actividad y el tipo de clase de actividad planificado en ese centro."
+}
+
+-- AGREGADO 2026-10-23. Escrito contra el diccionario (dd03l) antes de que la
+-- tabla llegue a la replica.
+
+SELECT
+  mandt AS client,
+  kokrs AS controlling_area,
+  kostl AS cost_center,
+  lstar AS activity_type,
+  gjahr AS fiscal_year,
+  objnr AS object_number,
+  latyp AS activity_type_category,
+  latypi AS activity_type_category_actual,
+  leinh AS activity_unit,
+  ausfk AS output_factor,
+  auseh AS output_unit,
+  cckey AS cost_collector_key
+FROM ${ref("cssl")}

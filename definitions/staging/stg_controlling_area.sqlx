@@ -1,0 +1,14 @@
+config {
+  type: "view",
+  schema: dataform.projectConfig.vars.dataset_temp,
+  name: "stg_controlling_area_ksbt",
+  description: "Staging de TKA01 -- area de controlling, su texto y su moneda. La moneda del area CO es la de los campos TKG/TKF de COST."
+}
+
+SELECT
+  mandt AS client,
+  kokrs AS controlling_area,
+  bezei AS controlling_area_description,
+  waers AS controlling_area_currency,
+  lmona AS fiscal_year_variant
+FROM ${ref("tka01")}

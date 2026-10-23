@@ -1,0 +1,32 @@
+config {
+  type: "view",
+  schema: dataform.projectConfig.vars.dataset_temp,
+  name: "stg_csla_ksbt",
+  description: "Staging de CSLA -- maestro de clases de actividad, con su vigencia (DATAB/DATBI). Unidad, tipo de clase e indicadores de tarifa por defecto."
+}
+
+-- AGREGADO 2026-10-23. Escrito contra el diccionario (dd03l) antes de que la
+-- tabla llegue a la replica.
+--
+-- CON vigencia: a diferencia de CSLT, la clave incluye DATBI y una clase
+-- puede cambiar de unidad o de indicador en el tiempo. La version que
+-- aplica a cada periodo se elige en int_tarifas_ksbt.
+
+SELECT
+  mandt AS client,
+  kokrs AS controlling_area,
+  lstar AS activity_type,
+  datab AS valid_from,
+  datbi AS valid_to,
+  leinh AS activity_unit,
+  latyp AS activity_type_category,
+  latypi AS activity_type_category_actual,
+  tarkz AS price_indicator_plan,
+  tarkz_i AS price_indicator_actual,
+  fixvo AS fixed_cost_predistribution_indicator,
+  yrate AS average_annual_rate_indicator,
+  kstty AS cost_element_type,
+  sprkz AS lock_indicator,
+  ersda AS created_on,
+  usnam AS created_by
+FROM ${ref("csla")}

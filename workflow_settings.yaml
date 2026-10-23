@@ -1,0 +1,47 @@
+defaultProject: haceb-qa
+defaultDataset: dataform
+defaultAssertionDataset: dataform_assertions
+dataformCoreVersion: 3.0.52
+
+vars:
+  # ---------------------------------------------------------------------
+  # ORIGEN DE LOS DATOS
+  # Las declaraciones de fuente (definitions/sources/*.js) leen el proyecto
+  # y el dataset de aca, no los tienen escritos adentro. Para pasar a
+  # productivo se cambian estos valores y nada mas.
+  # Tambien se pueden sobreescribir por corrida, con el flag entero
+  # entrecomillado para que la shell no lo corte en la coma:
+  #   dataform run "--vars=source_project=haceb-prd,source_dataset=prd_cortex"
+  # ---------------------------------------------------------------------
+  # Replica SAP de Aecorsoft (COST, CSSL, CSLA, CSLT, TKA09, ...)
+  source_project: haceb-qa
+  source_dataset: pru_cortex
+
+  # Capa de reporting de Cortex (CostCentersMD)
+  cortex_project: haceb-qa
+  cortex_dataset: reporting_cortex_qa
+
+  # ---------------------------------------------------------------------
+  # DESTINO DE LO QUE PRODUCE EL MODELO
+  # dataset_procesados: la vista de consumo KSBT, el entregable.
+  # dataset_temp:       staging, parametros e intermedias.
+  # ---------------------------------------------------------------------
+  dataset_procesados: pru_dprocesados
+  dataset_temp: pru_dtemp
+
+  # ---------------------------------------------------------------------
+  # ALCANCE DE NEGOCIO (se materializa en cfg_ksbt)
+  # mandante:          cliente SAP de la replica.
+  # area_controlling:  KOKRS. En la replica solo existe '1000' (verificado
+  #                    2026-10-23 contra csks, cslt y coep).
+  # versiones:         VERSN separadas por coma. '000' es la version real.
+  # ejercicio_desde:   primer GJAHR en alcance (la propuesta cubre hasta 3).
+  # ejercicio_hasta:   ultimo GJAHR. Vacio = ano en curso.
+  # idioma:            SPRAS de los textos.
+  # ---------------------------------------------------------------------
+  mandante: "300"
+  area_controlling: "1000"
+  versiones: "000"
+  ejercicio_desde: "2024"
+  ejercicio_hasta: ""
+  idioma: "S"

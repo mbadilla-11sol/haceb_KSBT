@@ -1,0 +1,26 @@
+config {
+  type: "view",
+  schema: dataform.projectConfig.vars.dataset_temp,
+  name: "stg_versions_ksbt",
+  description: "Staging de versiones CO: TKA09 (definicion) con su texto de TKT09 en el idioma de vars.idioma. Una fila por mandante, area CO y version."
+}
+
+-- AGREGADO 2026-10-23. Escrito contra el diccionario (dd03l) antes de que
+-- TKA09 y TKT09 lleguen a la replica.
+
+SELECT
+  v.mandt AS client,
+  v.kokrs AS controlling_area,
+  v.versn AS version,
+  t.txt AS version_description,
+  v.actual AS is_actual_version_raw,
+  v.planning AS is_plan_version_raw,
+  v.refvs AS reference_version,
+  v.exuvs AS exclusive_use_indicator,
+  v.valutyp AS valuation_view
+FROM ${ref("tka09")} AS v
+LEFT JOIN ${ref("tkt09")} AS t
+  ON t.mandt = v.mandt
+  AND t.kokrs = v.kokrs
+  AND t.versn = v.versn
+  AND t.langu = ${ksbt.sqlString(dataform.projectConfig.vars.idioma)}

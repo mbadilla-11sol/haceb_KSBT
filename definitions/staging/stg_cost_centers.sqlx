@@ -1,0 +1,27 @@
+config {
+  type: "view",
+  schema: dataform.projectConfig.vars.dataset_temp,
+  name: "stg_cost_centers_ksbt",
+  description: "Staging de CostCentersMD (Cortex) -- centro de costo, texto, sociedad y moneda del objeto, en el idioma de vars.idioma. Reutiliza el modelo de Cortex, como define la propuesta."
+}
+
+-- CostCentersMD esta congelada desde el 11-12 de agosto de 2026 y solo trae
+-- la version vigente al momento de construirse. Si un centro de costo nuevo
+-- o modificado despues de esa fecha no aparece, la alternativa es leer
+-- csks/cskt de la replica (ya replicadas, 1.188 filas).
+
+SELECT
+  Client_MANDT AS client,
+  ControllingArea_KOKRS AS controlling_area,
+  CostCenter_KOSTL AS cost_center,
+  ValidFromDate_DATAB AS valid_from,
+  ValidTo_DATBI AS valid_to,
+  GeneralName_KTEXT AS cost_center_description,
+  Description_LTEXT AS cost_center_long_text,
+  CompanyCode_BUKRS AS company_code,
+  CurrencyKey_WAERS AS object_currency,
+  CostCenterCategory_KOSAR AS cost_center_category,
+  ProfitCenter_PRCTR AS profit_center,
+  Plant_WERKS AS plant
+FROM ${ref("CostCentersMD")}
+WHERE Language_SPRAS = ${ksbt.sqlString(dataform.projectConfig.vars.idioma)}

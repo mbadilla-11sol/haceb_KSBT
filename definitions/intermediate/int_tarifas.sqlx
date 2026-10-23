@@ -1,0 +1,195 @@
+config {
+  type: "view",
+  schema: dataform.projectConfig.vars.dataset_temp,
+  name: "int_tarifas_ksbt",
+  description: "Tarifas de clases de actividad en formato largo: una fila por centro de costo, clase de actividad, ejercicio, periodo, version y tipo de valor (01 plan / 04 real). Despivotea los 16 periodos de COST, lleva los importes a su valor real segun TCURX y separa la tarifa total en fija y variable. Filtrado al alcance de cfg_ksbt.",
+  assertions: {
+    uniqueKey: ["client", "controlling_area", "cost_center", "activity_type", "fiscal_year", "period", "version", "value_type"],
+    nonNull: ["cost_center", "activity_type", "fiscal_year", "period", "version", "value_type"]
+  }
+}
+
+js {
+  // Un STRUCT por periodo de COST (001..016). Generado para no escribir a
+  // mano 16 x 6 columnas.
+  const pad = (n) => String(n).padStart(3, "0");
+  const periodos = Array.from({ length: 16 }, (_, i) => i + 1)
+    .map((n) => `STRUCT(${n} AS period,
+        c.tog${pad(n)} AS tog, c.tof${pad(n)} AS tof, c.toe${pad(n)} AS toe,
+        c.tkg${pad(n)} AS tkg, c.tkf${pad(n)} AS tkf, c.tke${pad(n)} AS tke)`)
+    .join(",\n      ");
+}
+
+-- AGREGADO 2026-10-23. Escrito antes de que COST llegue a la replica: la
+-- logica sigue el diccionario SAP y queda por validar contra el set de
+-- cuadratura (Complementos/KSBT_sep.XLSX).
+--
+-- REGLAS
+-- 1. Tipo de valor: solo 01 (plan) y 04 (real). Son los dos que muestra KSBT
+--    y los dos del set de cuadratura.
+-- 2. Moneda: COST no trae campo de moneda. TOG/TOF estan en la moneda del
+--    objeto (la del centro de costo, CSKS.WAERS) y TKG/TKF en la del area CO
+--    (TKA01.WAERS). Cada una se escala con su propio factor de TCURX: COP
+--    tiene 0 decimales, asi que el valor guardado se multiplica por 100.
+--    Se conserva el valor crudo junto al real.
+-- 3. Variable = total - fijo (la propuesta, seccion 4).
+-- 4. Unidad de precio (TOE/TKE): la tarifa esta expresada por esa cantidad
+--    de unidades de actividad. Se expone tal cual y ademas la tarifa por
+--    una unidad. PENDIENTE: confirmar cual de las dos muestra KSBT en
+--    "Tar.total mon.obj." (el set de cuadratura lo resuelve).
+-- 5. Periodos 13-16 (especiales) se conservan; para elegir la vigencia de
+--    los maestros se asimilan a diciembre.
+-- 6. Se descartan los periodos sin ninguna tarifa (todo cero o nulo): COST
+--    trae los 16 periodos aunque solo se haya planificado una parte.
+
+WITH cost_en_alcance AS (
+  SELECT c.*
+  FROM ${ref("stg_cost_ksbt")} AS c
+  INNER JOIN ${ref("cfg_ksbt")} AS cfg
+    ON cfg.client = c.client
+    AND cfg.controlling_area = c.controlling_area
+    AND cfg.version = c.version
+    AND cfg.fiscal_year = c.fiscal_year
+  WHERE c.value_type IN ('01', '04')
+),
+
+por_periodo AS (
+  SELECT
+    c.client,
+    c.ledger,
+    c.object_number,
+    c.controlling_area,
+    c.cost_center,
+    c.activity_type,
+    c.fiscal_year,
+    p.period,
+    c.version,
+    c.value_type,
+    c.price_indicator,
+    c.co_business_transaction,
+    p.tog, p.tof, SAFE_CAST(p.toe AS INT64) AS toe,
+    p.tkg, p.tkf, SAFE_CAST(p.tke AS INT64) AS tke,
+    -- Fechas del periodo para elegir la vigencia de los maestros.
+    DATE(CAST(c.fiscal_year AS INT64), LEAST(p.period, 12), 1) AS period_start,
+    LAST_DAY(DATE(CAST(c.fiscal_year AS INT64), LEAST(p.period, 12), 1)) AS period_end
+  FROM cost_en_alcance AS c,
+    UNNEST([
+      ${periodos}
+    ]) AS p
+  WHERE COALESCE(p.tog, 0) != 0
+    OR COALESCE(p.tof, 0) != 0
+    OR COALESCE(p.tkg, 0) != 0
+    OR COALESCE(p.tkf, 0) != 0
+),
+
+con_maestros AS (
+  SELECT
+    t.*,
+    cc.object_currency,
+    ca.controlling_area_currency,
+    ${ksbt.factorMoneda("dec_obj")} AS object_currency_factor,
+    ${ksbt.factorMoneda("dec_co")} AS controlling_area_currency_factor,
+    cc.cost_center_description,
+    cc.cost_center_long_text,
+    cc.company_code,
+    cssl.object_number AS cssl_object_number,
+    cssl.activity_unit AS cssl_activity_unit,
+    cssl.activity_type_category AS cssl_activity_type_category,
+    csla.activity_unit AS csla_activity_unit,
+    csla.activity_type_category AS csla_activity_type_category,
+    csla.price_indicator_plan AS csla_price_indicator_plan,
+    csla.price_indicator_actual AS csla_price_indicator_actual,
+    csla.fixed_cost_predistribution_indicator,
+    cslt.activity_type_description,
+    cslt.activity_type_long_text
+  FROM por_periodo AS t
+  -- Centro de costo: CostCentersMD trae una sola version (la vigente).
+  LEFT JOIN ${ref("stg_cost_centers_ksbt")} AS cc
+    ON cc.client = t.client
+    AND cc.controlling_area = t.controlling_area
+    AND cc.cost_center = t.cost_center
+  LEFT JOIN ${ref("stg_controlling_area_ksbt")} AS ca
+    ON ca.client = t.client
+    AND ca.controlling_area = t.controlling_area
+  LEFT JOIN ${ref("stg_currency_decimals_ksbt")} AS dec_obj
+    ON dec_obj.currency = cc.object_currency
+  LEFT JOIN ${ref("stg_currency_decimals_ksbt")} AS dec_co
+    ON dec_co.currency = ca.controlling_area_currency
+  LEFT JOIN ${ref("stg_cssl_ksbt")} AS cssl
+    ON cssl.client = t.client
+    AND cssl.controlling_area = t.controlling_area
+    AND cssl.cost_center = t.cost_center
+    AND cssl.activity_type = t.activity_type
+    AND cssl.fiscal_year = t.fiscal_year
+  -- CSLA y CSLT tienen vigencia: se toma la version que cubre el periodo y,
+  -- si hubiera mas de una, la de DATBI mas reciente (ver QUALIFY).
+  LEFT JOIN ${ref("stg_csla_ksbt")} AS csla
+    ON csla.client = t.client
+    AND csla.controlling_area = t.controlling_area
+    AND csla.activity_type = t.activity_type
+    AND csla.valid_from <= t.period_end
+    AND csla.valid_to >= t.period_start
+  LEFT JOIN ${ref("stg_cslt_ksbt")} AS cslt
+    ON cslt.client = t.client
+    AND cslt.controlling_area = t.controlling_area
+    AND cslt.activity_type = t.activity_type
+    AND cslt.valid_to >= t.period_start
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY t.client, t.ledger, t.object_number, t.fiscal_year, t.period,
+      t.version, t.value_type, t.price_indicator
+    ORDER BY csla.valid_to DESC, cslt.valid_to ASC
+  ) = 1
+)
+
+SELECT
+  client,
+  controlling_area,
+  company_code,
+  cost_center,
+  cost_center_description,
+  cost_center_long_text,
+  activity_type,
+  activity_type_description,
+  activity_type_long_text,
+  fiscal_year,
+  period,
+  FORMAT('%03d', period) AS period_code,
+  version,
+  value_type,
+  CASE value_type WHEN '01' THEN 'Plan' WHEN '04' THEN 'Real' END AS value_type_description,
+  price_indicator,
+  ledger,
+  object_number,
+  co_business_transaction,
+
+  -- Unidad y tipo de clase: CSSL (por centro y ejercicio) manda sobre el
+  -- maestro CSLA. Se exponen ambos para auditar.
+  COALESCE(cssl_activity_unit, csla_activity_unit) AS activity_unit,
+  COALESCE(cssl_activity_type_category, csla_activity_type_category) AS activity_type_category,
+  csla_price_indicator_plan,
+  csla_price_indicator_actual,
+  fixed_cost_predistribution_indicator,
+
+  -- Moneda del objeto (centro de costo) -- la del set de cuadratura.
+  object_currency,
+  tog AS price_total_object_currency_raw,
+  tof AS price_fixed_object_currency_raw,
+  tog * object_currency_factor AS price_total_object_currency,
+  tof * object_currency_factor AS price_fixed_object_currency,
+  (tog - COALESCE(tof, 0)) * object_currency_factor AS price_variable_object_currency,
+  toe AS price_unit_object_currency,
+  SAFE_DIVIDE(tog * object_currency_factor, NULLIF(toe, 0)) AS price_total_per_unit_object_currency,
+
+  -- Moneda del area CO.
+  controlling_area_currency,
+  tkg AS price_total_co_currency_raw,
+  tkf AS price_fixed_co_currency_raw,
+  tkg * controlling_area_currency_factor AS price_total_co_currency,
+  tkf * controlling_area_currency_factor AS price_fixed_co_currency,
+  (tkg - COALESCE(tkf, 0)) * controlling_area_currency_factor AS price_variable_co_currency,
+  tke AS price_unit_co_currency,
+
+  -- Controles de calidad de la union: deberian ser siempre TRUE.
+  cssl_object_number IS NOT NULL AS found_in_cssl,
+  cssl_object_number IS NULL OR cssl_object_number = object_number AS object_number_matches_cssl
+FROM con_maestros

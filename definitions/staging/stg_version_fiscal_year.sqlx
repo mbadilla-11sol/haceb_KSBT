@@ -1,0 +1,26 @@
+config {
+  type: "view",
+  schema: dataform.projectConfig.vars.dataset_temp,
+  name: "stg_version_fiscal_year_ksbt",
+  description: "Staging de TKA07 -- parametros de cada version CO por ejercicio: metodo de determinacion de tarifa plan y real, tipo de cambio y bloqueo."
+}
+
+-- AGREGADO 2026-10-23. Escrito contra el diccionario (dd03l) antes de que la
+-- tabla llegue a la replica. No alimenta el calculo de tarifas. PENDIENTE:
+-- usarla para verificar que las versiones de vars.versiones esten
+-- habilitadas en cada ejercicio de cfg_ksbt.
+
+SELECT
+  mandt AS client,
+  kokrs AS controlling_area,
+  versn AS version,
+  gjahr AS fiscal_year,
+  vspkz AS version_locked,
+  plicc AS integrated_planning,
+  kurst AS exchange_rate_type,
+  ratmp AS plan_price_method,
+  ratmi AS actual_price_method,
+  pivit AS purely_iterative_price,
+  yrate AS average_annual_rate_indicator,
+  comp_owaer AS object_currency_split
+FROM ${ref("tka07")}

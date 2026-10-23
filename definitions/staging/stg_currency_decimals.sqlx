@@ -1,0 +1,11 @@
+config {
+  type: "view",
+  schema: dataform.projectConfig.vars.dataset_temp,
+  name: "stg_currency_decimals_ksbt",
+  description: "Staging de TCURX -- decimales de cada moneda. Solo trae las monedas que NO tienen 2 decimales; las ausentes usan 2. COP tiene CURRDEC = 0 (verificado 2026-10-23)."
+}
+
+SELECT
+  currkey AS currency,
+  currdec AS currdec
+FROM ${ref("tcurx")}

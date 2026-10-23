@@ -1,0 +1,40 @@
+config {
+  type: "view",
+  schema: dataform.projectConfig.vars.dataset_temp,
+  name: "stg_cost_ksbt",
+  description: "Staging de COST -- totales de tarifas de clases de actividad. Una fila por objeto CO, ejercicio, tipo de valor, version e indicador de tarifa, con los 16 periodos en columnas. Solo objetos de clase de actividad (OBJNR 'KL...'). Sin logica de negocio: el despivoteo a filas y la conversion de moneda estan en int_tarifas_ksbt."
+}
+
+-- AGREGADO 2026-10-23. Escrito contra el diccionario (dd03l) antes de que la
+-- tabla llegue a la replica. Al llegar, verificar:
+--   - que Aecorsoft la traiga sin el tope de 1.000.000 de filas;
+--   - el tipo de TOE/TKE (NUMC 5): si llega como STRING hay que castearlo,
+--     ver int_tarifas_ksbt.
+--
+-- OBJNR de una clase de actividad = 'KL' + KOKRS(4) + KOSTL(10) + LSTAR(6).
+-- Se descompone aca para poder unir sin depender de CSSL, y se conserva el
+-- OBJNR crudo para unir contra CSSL y verificar que coincidan.
+--
+-- Columnas por periodo (001..016), todas en la fila:
+--   tog / tof / toe : tarifa total, parte fija y unidad de precio en MONEDA
+--                     DEL OBJETO (la del centro de costo, CSKS.WAERS).
+--   tkg / tkf / tke : idem en MONEDA DEL AREA CO (TKA01.WAERS).
+-- Importes CURR(11,2): para COP hay que multiplicar por 100 (ver
+-- includes/ksbt.js -> factorMoneda).
+
+SELECT
+  mandt AS client,
+  lednr AS ledger,
+  objnr AS object_number,
+  SUBSTR(objnr, 3, 4) AS controlling_area,
+  SUBSTR(objnr, 7, 10) AS cost_center,
+  SUBSTR(objnr, 17, 6) AS activity_type,
+  gjahr AS fiscal_year,
+  wrttp AS value_type,
+  versn AS version,
+  tarkz AS price_indicator,
+  perbl AS period_block,
+  vrgng AS co_business_transaction,
+  cost.* EXCEPT (mandt, lednr, objnr, gjahr, wrttp, versn, tarkz, perbl, vrgng)
+FROM ${ref("cost")} AS cost
+WHERE STARTS_WITH(objnr, 'KL')
