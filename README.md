@@ -14,13 +14,19 @@ Entrega, por centro de costo y clase de actividad, la tarifa plan y la real
 
 ## Arquitectura
 
-| Capa | Directorio | Prefijo | Dataset | Función |
+| Capa | Directorio | Prefijo | Variable de dataset | Función |
 |---|---|---|---|---|
 | Fuentes | `definitions/sources/` | — | — | Declaraciones de tablas externas. No crean nada. |
-| Staging | `definitions/staging/` | `stg_*_ksbt` | `pru_dtemp` | Una vista por fuente. Renombra campos SAP y filtra idioma. Sin lógica de negocio. |
-| Parámetros | `definitions/intermediate/` | `cfg_ksbt` | `pru_dtemp` | Alcance (mandante, área CO, versiones, ejercicios) armado desde `workflow_settings.yaml`. |
-| Intermedia | `definitions/intermediate/` | `int_*_ksbt` | `pru_dtemp` | Despivoteo de los 16 períodos, moneda, fijo/variable, maestros. |
-| Consumo | `definitions/marts/` | `rpt_ksbt` | `pru_dprocesados` | El entregable. |
+| Staging | `definitions/staging/` | `stg_*_ksbt` | `dataset_temp` | Una vista por fuente. Renombra campos SAP y filtra idioma. Sin lógica de negocio. |
+| Parámetros | `definitions/intermediate/` | `cfg_ksbt` | `dataset_temp` | Alcance (mandante, área CO, versiones, ejercicios) armado desde `workflow_settings.yaml`. |
+| Intermedia | `definitions/intermediate/` | `int_*_ksbt` | `dataset_temp` | Despivoteo de los 16 períodos, moneda, fijo/variable, maestros. |
+| Consumo | `definitions/marts/` | `rpt_ksbt` | `dataset_procesados` | El entregable. |
+
+Durante el desarrollo **todo el modelo vive en un único dataset, `haceb-qa.ksbt`**
+(US): las dos variables y las assertions apuntan ahí. Así se puede
+reconstruir o borrar entero sin tocar objetos de otros modelos. Dataform crea
+el dataset en la primera corrida. Para el paso a productivo basta con
+separar las capas cambiando `dataset_temp` y `dataset_procesados`.
 
 Flujo:
 

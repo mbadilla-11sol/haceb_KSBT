@@ -1,6 +1,11 @@
 defaultProject: haceb-qa
-defaultDataset: dataform
-defaultAssertionDataset: dataform_assertions
+# Todo el modelo (staging, intermedias, consumo y assertions) vive en un
+# unico dataset propio, para poder reconstruirlo o borrarlo entero sin tocar
+# objetos de otros modelos. US: la misma ubicacion que pru_cortex y
+# reporting_cortex_qa, si no las vistas no pueden leerlas.
+defaultDataset: ksbt
+defaultAssertionDataset: ksbt
+defaultLocation: US
 dataformCoreVersion: 3.0.52
 
 vars:
@@ -25,9 +30,12 @@ vars:
   # DESTINO DE LO QUE PRODUCE EL MODELO
   # dataset_procesados: la vista de consumo KSBT, el entregable.
   # dataset_temp:       staging, parametros e intermedias.
+  # DESARROLLO (hoy): ambas en el dataset propio `ksbt`, que Dataform crea
+  # en la primera corrida. Al cerrar el modelo se pueden separar de nuevo
+  # (p. ej. pru_dtemp / pru_dprocesados) cambiando solo estos dos valores.
   # ---------------------------------------------------------------------
-  dataset_procesados: pru_dprocesados
-  dataset_temp: pru_dtemp
+  dataset_procesados: ksbt
+  dataset_temp: ksbt
 
   # ---------------------------------------------------------------------
   # ALCANCE DE NEGOCIO (se materializa en cfg_ksbt)
