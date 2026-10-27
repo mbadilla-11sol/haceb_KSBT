@@ -39,8 +39,19 @@ js {
 --    "Tar.total mon.obj." (el set de cuadratura lo resuelve).
 -- 5. Periodos 13-16 (especiales) se conservan; para elegir la vigencia de
 --    los maestros se asimilan a diciembre.
--- 6. Se descartan los periodos sin ninguna tarifa (todo cero o nulo): COST
---    trae los 16 periodos aunque solo se haya planificado una parte.
+-- 6. CORREGIDO 2026-10-26: se conservan los periodos en cero. KSBT los
+--    muestra: en el set de septiembre 805 filas (70 plan, 735 real) valen 0
+--    y solo cuadran si el modelo no las descarta.
+-- 7. AGREGADO 2026-10-26 -- un solo indicador de tarifa (TARKZ) por clave.
+--    COST trae la misma tarifa con mas de un TARKZ (plan: 001+004, real:
+--    005+008, en 63.296 y 39.870 claves). Se toma el indicador por defecto
+--    de la clase de actividad en CSLA (TARKZ para plan, TARKZ_I para real:
+--    hoy 001 y 005 en las 5 clases) y, si esa fila no existe, el TARKZ mas
+--    bajo. Cuadratura 2026/009 vs KSBT_sep.XLSX: 001 cuadra 1.885/1.885 y
+--    005 1.220/1.220; 004 falla en 1 (1.559 claves de toda la historia
+--    difieren entre 001 y 004). El respaldo (sin fila del indicador por
+--    defecto, p. ej. claves con solo 003) no aparece en septiembre y queda
+--    sin validar: price_indicator_is_default lo marca.
 
 WITH cost_en_alcance AS (
   SELECT c.*
@@ -76,10 +87,16 @@ por_periodo AS (
     UNNEST([
       ${periodos}
     ]) AS p
-  WHERE COALESCE(p.tog, 0) != 0
-    OR COALESCE(p.tof, 0) != 0
-    OR COALESCE(p.tkg, 0) != 0
-    OR COALESCE(p.tkf, 0) != 0
+),
+
+-- Todos los TARKZ que trae COST para cada clave, para auditar la eleccion.
+indicadores AS (
+  SELECT
+    client, controlling_area, cost_center, activity_type, fiscal_year,
+    period, version, value_type,
+    STRING_AGG(DISTINCT price_indicator, ',' ORDER BY price_indicator) AS price_indicators_available
+  FROM por_periodo
+  GROUP BY 1, 2, 3, 4, 5, 6, 7, 8
 ),
 
 con_maestros AS (
@@ -101,8 +118,18 @@ con_maestros AS (
     csla.price_indicator_actual AS csla_price_indicator_actual,
     csla.fixed_cost_predistribution_indicator,
     cslt.activity_type_description,
-    cslt.activity_type_long_text
+    cslt.activity_type_long_text,
+    ind.price_indicators_available
   FROM por_periodo AS t
+  LEFT JOIN indicadores AS ind
+    ON ind.client = t.client
+    AND ind.controlling_area = t.controlling_area
+    AND ind.cost_center = t.cost_center
+    AND ind.activity_type = t.activity_type
+    AND ind.fiscal_year = t.fiscal_year
+    AND ind.period = t.period
+    AND ind.version = t.version
+    AND ind.value_type = t.value_type
   -- Centro de costo: CostCentersMD trae una sola version (la vigente).
   LEFT JOIN ${ref("stg_cost_centers_ksbt")} AS cc
     ON cc.client = t.client
@@ -139,6 +166,22 @@ con_maestros AS (
       t.version, t.value_type, t.price_indicator
     ORDER BY csla.valid_to DESC, cslt.valid_to ASC
   ) = 1
+),
+
+-- Regla 7: un TARKZ por clave, el por defecto de CSLA o el mas bajo.
+con_indicador AS (
+  SELECT
+    *,
+    price_indicator = IF(value_type = '01', csla_price_indicator_plan, csla_price_indicator_actual)
+      AS price_indicator_is_default
+  FROM con_maestros
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY client, controlling_area, cost_center, activity_type,
+      fiscal_year, period, version, value_type
+    ORDER BY
+      IF(price_indicator = IF(value_type = '01', csla_price_indicator_plan, csla_price_indicator_actual), 0, 1),
+      price_indicator
+  ) = 1
 )
 
 SELECT
@@ -158,6 +201,8 @@ SELECT
   value_type,
   CASE value_type WHEN '01' THEN 'Plan' WHEN '04' THEN 'Real' END AS value_type_description,
   price_indicator,
+  COALESCE(price_indicator_is_default, FALSE) AS price_indicator_is_default,
+  price_indicators_available,
   ledger,
   object_number,
   co_business_transaction,
@@ -192,4 +237,4 @@ SELECT
   -- Controles de calidad de la union: deberian ser siempre TRUE.
   cssl_object_number IS NOT NULL AS found_in_cssl,
   cssl_object_number IS NULL OR cssl_object_number = object_number AS object_number_matches_cssl
-FROM con_maestros
+FROM con_indicador

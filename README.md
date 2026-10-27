@@ -5,10 +5,8 @@ actividad*) sobre BigQuery, implementada en Dataform como extensión de Cortex.
 Entrega, por centro de costo y clase de actividad, la tarifa plan y la real
 —total, fija y variable— por ejercicio, período y versión.
 
-> **Estado (2026-10-23):** esqueleto completo, compila. Las tablas `COST`,
-> `CSSL`, `CSLA`, `TKA09`, `TKT09` y `TKA07` están pedidas a Aecorsoft y aún
-> no existen en la réplica: las acciones que dependen de ellas fallan al
-> correr hasta que lleguen. Falta la cuadratura contra el set de septiembre.
+> **Estado (2026-10-26):** fuentes replicadas (`COST` 162.605 filas) y
+> cuadratura de septiembre 2026 al 100 %.
 
 ---
 
@@ -58,8 +56,19 @@ TKA09 + TKT09 ─► stg_versions_ksbt ───────────┘ (tex
   se multiplica por `10^(2 - TCURX.CURRDEC)`: en COP, × 100. Se conserva el
   valor crudo (`*_raw`).
 - **Fijo / variable:** variable = total − fijo.
-- **Unidad de precio:** `TOE/TKE`. Pendiente confirmar con la cuadratura si
-  KSBT muestra la tarifa por unidad de precio o por unidad.
+- **Unidad de precio:** `TOE/TKE`. En el set de septiembre vale 1 y la
+  tarifa total cuadra tal cual.
+- **Indicador de tarifa (`TARKZ`):** `COST` trae la misma tarifa con más de
+  un indicador (plan `001`+`004`, real `005`+`008`). Se toma el indicador por
+  defecto de la clase en `CSLA` (`TARKZ` plan / `TARKZ_I` real) y, si no
+  existe, el más bajo (`price_indicator_is_default` lo marca).
+- **Períodos en cero:** se conservan, KSBT también los muestra.
+
+## Cuadratura
+
+| Set | Filas | Cuadran exacto |
+|---|---|---|
+| `KSBT_sep.XLSX` — 2026/009, versión `000`, 391 centros, 5 clases | 3.910 (1.955 plan + 1.955 real) | 3.910 (100 %) |
 - **Vigencia:** `CSLA`/`CSLT` se eligen por período; los especiales (13–16)
   se asimilan a diciembre. `CostCentersMD` trae solo la versión vigente.
 
@@ -84,8 +93,7 @@ dataform run "--vars=source_project=haceb-prd,source_dataset=prd_cortex"
 
 | Tema | Descripción |
 |---|---|
-| Ingesta | `COST` sin tope de 1M filas; replicación activa hasta septiembre 2026 o después. |
-| Período del set de cuadratura | `KSBT_sep.XLSX` no trae ejercicio/período: confirmar 2026/009 y versión. |
-| Unidad de precio | Ver *Reglas de negocio*. |
+| Indicador de respaldo | 2.720 filas de plan solo traen `TARKZ 003` (sin el `001` por defecto). Se usan, pero ningún set de cuadratura las cubre todavía. |
+| Centros sin CSSL | 160 filas de `COST` no encuentran su fila en `CSSL` (`found_in_cssl = FALSE`); la unidad sale de `CSLA`. |
 | Indicador fijo/variable | La propuesta lo pide "según el maestro". Se expone `CSLA.FIXVO`; validar con Controlling. |
 | Versiones por ejercicio | `stg_version_fiscal_year_ksbt` (TKA07) aún no se usa para validar `cfg_ksbt`. |
